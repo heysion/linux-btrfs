@@ -322,7 +322,7 @@ int copy_huge_pmd(struct mm_struct *dst_mm, struct mm_struct *src_mm,
 		spin_unlock(&src_mm->page_table_lock);
 		spin_unlock(&dst_mm->page_table_lock);
 
-		wait_split_huge_page(vma->anon_vma, src_pmd); /* src_vma */
+		wait_split_huge_page(src_mm, src_pmd); /* src_vma */
 		goto out;
 	}
 	src_page = pmd_page(pmd);
@@ -559,8 +559,7 @@ int zap_huge_pmd(struct mmu_gather *tlb, struct vm_area_struct *vma,
 	if (likely(pmd_trans_huge(*pmd))) {
 		if (unlikely(pmd_trans_splitting(*pmd))) {
 			spin_unlock(&tlb->mm->page_table_lock);
-			wait_split_huge_page(vma->anon_vma,
-					     pmd);
+			wait_split_huge_page(tlb->mm, pmd);
 		} else {
 			struct page *page;
 			pgtable_t pgtable;
@@ -886,4 +885,36 @@ void __split_huge_page_pmd(struct mm_struct *mm, pmd_t *pmd)
 
 	put_page(page);
 	BUG_ON(pmd_trans_huge(*pmd));
+}
+
+void wait_split_huge_page(struct mm_struct *mm, pmd_t *pmd)
+{
+	struct page *page;
+
+	spin_lock(&mm->page_table_lock);
+	if (unlikely(!pmd_trans_huge(*pmd))) {
+		spin_unlock(&mm->page_table_lock);
+		VM_BUG_ON(pmd_trans_splitting(*pmd));
+		return;
+	}
+	page = pmd_page(*pmd);
+	get_page(page);
+	spin_unlock(&mm->page_table_lock);
+
+	/*
+	 * The vma->anon_vma->lock is the wrong lock if the page is shared,
+	 * the anon_vma->lock pointed by page->mapping is the right one.
+	 */
+	wait_page_lock_anon_vma(page);
+
+	put_page(page);
+
+	/*
+	 * spin_unlock_wait() is just a loop in C and so the
+	 * CPU can reorder anything around it.
+	 */
+	smp_mb();
+
+	BUG_ON(pmd_trans_huge(*pmd));
+	VM_BUG_ON(pmd_trans_splitting(*pmd));
 }

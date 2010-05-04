@@ -225,6 +225,30 @@ void page_unlock_anon_vma(struct anon_vma *anon_vma)
 	rcu_read_unlock();
 }
 
+#ifdef CONFIG_TRANSPARENT_HUGEPAGE
+/*
+ * Getting a lock on a stable anon_vma from a page off the LRU is
+ * tricky: page_lock_anon_vma rely on RCU to guard against the races.
+ */
+void wait_page_lock_anon_vma(struct page *page)
+{
+	struct anon_vma *anon_vma;
+	unsigned long anon_mapping;
+
+	rcu_read_lock();
+	anon_mapping = (unsigned long) ACCESS_ONCE(page->mapping);
+	if ((anon_mapping & PAGE_MAPPING_FLAGS) != PAGE_MAPPING_ANON)
+		goto out;
+	if (!page_mapped(page))
+		goto out;
+
+	anon_vma = (struct anon_vma *) (anon_mapping - PAGE_MAPPING_ANON);
+	spin_unlock_wait(&anon_vma->lock);
+out:
+	rcu_read_unlock();
+}
+#endif
+
 /*
  * At what user virtual address is page expected in @vma?
  * Returns virtual address or -EFAULT if page's index/offset is not

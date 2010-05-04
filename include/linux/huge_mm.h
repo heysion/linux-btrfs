@@ -74,24 +74,13 @@ extern int handle_pte_fault(struct mm_struct *mm,
 			    pte_t *pte, pmd_t *pmd, unsigned int flags);
 extern int split_huge_page(struct page *page);
 extern void __split_huge_page_pmd(struct mm_struct *mm, pmd_t *pmd);
+extern void wait_split_huge_page(struct mm_struct *mm, pmd_t *pmd);
 #define split_huge_page_pmd(__mm, __pmd)				\
 	do {								\
 		pmd_t *____pmd = (__pmd);				\
 		if (unlikely(pmd_trans_huge(*____pmd)))			\
 			__split_huge_page_pmd(__mm, ____pmd);		\
 	}  while (0)
-#define wait_split_huge_page(__anon_vma, __pmd)				\
-	do {								\
-		pmd_t *____pmd = (__pmd);				\
-		spin_unlock_wait(&(__anon_vma)->lock);			\
-		/*							\
-		 * spin_unlock_wait() is just a loop in C and so the	\
-		 * CPU can reorder anything around it.			\
-		 */							\
-		smp_mb();						\
-		BUG_ON(pmd_trans_splitting(*____pmd) ||			\
-		       pmd_trans_huge(*____pmd));			\
-	} while (0)
 #define HPAGE_PMD_ORDER (HPAGE_PMD_SHIFT-PAGE_SHIFT)
 #define HPAGE_PMD_NR (1<<HPAGE_PMD_ORDER)
 #if HPAGE_PMD_ORDER > MAX_ORDER
@@ -118,7 +107,7 @@ static inline int split_huge_page(struct page *page)
 }
 #define split_huge_page_pmd(__mm, __pmd)	\
 	do { } while (0)
-#define wait_split_huge_page(__anon_vma, __pmd)	\
+#define wait_split_huge_page(__mm, __pmd)	\
 	do { } while (0)
 #define PageTransHuge(page) 0
 #endif /* CONFIG_TRANSPARENT_HUGEPAGE */
