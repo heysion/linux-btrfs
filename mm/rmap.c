@@ -124,6 +124,11 @@ int anon_vma_prepare(struct vm_area_struct *vma)
 		spin_lock(&mm->page_table_lock);
 		if (likely(!vma->anon_vma)) {
 			vma->anon_vma = anon_vma;
+			/*
+			 * It's critical to add new vmas to the tail
+			 * of the anon_vma, see comment in
+			 * huge_memory.c:__split_huge_page().
+			 */
 			list_add_tail(&vma->anon_vma_node, &anon_vma->head);
 			allocated = NULL;
 		}
