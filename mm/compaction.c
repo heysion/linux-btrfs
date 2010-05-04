@@ -383,7 +383,9 @@ static int compact_zone(struct zone *zone, struct compact_control *cc)
 	cc->free_pfn = cc->migrate_pfn + zone->spanned_pages;
 	cc->free_pfn &= ~(pageblock_nr_pages-1);
 
+#if 0
 	migrate_prep();
+#endif
 
 	while ((ret = compact_finished(zone, cc)) == COMPACT_CONTINUE) {
 		unsigned long nr_migrate, nr_remaining;
