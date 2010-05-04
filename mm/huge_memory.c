@@ -937,7 +937,7 @@ int change_huge_pmd(struct vm_area_struct *vma, pmd_t *pmd,
 	if (likely(pmd_trans_huge(*pmd))) {
 		if (unlikely(pmd_trans_splitting(*pmd))) {
 			spin_unlock(&mm->page_table_lock);
-			wait_split_huge_page(vma->anon_vma, pmd);
+			wait_split_huge_page(mm, pmd);
 		} else {
 			pmd_t entry;
 
