@@ -4,6 +4,10 @@ NOTE: The Memory Resource Controller has been generically been referred
 to as the memory controller in this document. Do not confuse memory controller
 used here with the memory controller that is used in hardware.
 
+NOTE: When in this documentation we refer to PAGE_SIZE, we actually
+mean the real page size of the page being accounted which is bigger than
+PAGE_SIZE for compound pages.
+
 Salient features
 
 a. Enable control of Anonymous, Page Cache (mapped and unmapped) and
