@@ -52,11 +52,15 @@ struct anon_vma {
  * all the anon_vmas associated with this VMA.
  * The "same_anon_vma" list contains the anon_vma_chains
  * which link all the VMAs associated with this anon_vma.
+ *
+ * The "same_vma" list is locked by either having mm->mmap_sem
+ * locked for writing, or having mm->mmap_sem locked for reading
+ * AND holding the mm->anon_vma_chain_lock.
  */
 struct anon_vma_chain {
 	struct vm_area_struct *vma;
 	struct anon_vma *anon_vma;
-	struct list_head same_vma;   /* locked by mmap_sem & page_table_lock */
+	struct list_head same_vma;	/* see above */
 	struct list_head same_anon_vma;	/* locked by anon_vma->lock */
 };
 
@@ -90,18 +94,24 @@ static inline struct anon_vma *page_anon_vma(struct page *page)
 	return page_rmapping(page);
 }
 
-static inline void anon_vma_lock(struct vm_area_struct *vma)
-{
-	struct anon_vma *anon_vma = vma->anon_vma;
-	if (anon_vma)
-		spin_lock(&anon_vma->lock);
-}
+#define anon_vma_lock(vma, nest_lock)					\
+({									\
+	struct anon_vma *anon_vma = vma->anon_vma;			\
+	if (anon_vma) {							\
+		struct anon_vma_chain *avc;				\
+		list_for_each_entry(avc, &vma->anon_vma_chain, same_vma) \
+			spin_lock_nest_lock(&avc->anon_vma->lock, nest_lock); \
+	}								\
+})
 
 static inline void anon_vma_unlock(struct vm_area_struct *vma)
 {
 	struct anon_vma *anon_vma = vma->anon_vma;
-	if (anon_vma)
-		spin_unlock(&anon_vma->lock);
+	if (anon_vma) {
+		struct anon_vma_chain *avc;
+		list_for_each_entry(avc, &vma->anon_vma_chain, same_vma)
+			spin_unlock(&avc->anon_vma->lock);
+	}
 }
 
 /*

@@ -15,6 +15,7 @@ struct mm_struct init_mm = {
 	.mm_count	= ATOMIC_INIT(1),
 	.mmap_sem	= __RWSEM_INITIALIZER(init_mm.mmap_sem),
 	.page_table_lock =  __SPIN_LOCK_UNLOCKED(init_mm.page_table_lock),
+	.anon_vma_chain_lock =  __SPIN_LOCK_UNLOCKED(init_mm.anon_vma_chain_lock),
 	.mmlist		= LIST_HEAD_INIT(init_mm.mmlist),
 	.cpu_vm_mask	= CPU_MASK_ALL,
 };

@@ -452,7 +452,7 @@ static void vma_link(struct mm_struct *mm, struct vm_area_struct *vma,
 		spin_lock(&mapping->i_mmap_lock);
 		vma->vm_truncate_count = mapping->truncate_count;
 	}
-	anon_vma_lock(vma);
+	anon_vma_lock(vma, &mm->mmap_sem);
 
 	__vma_link(mm, vma, prev, rb_link, rb_parent);
 	__vma_link_file(vma);
@@ -578,6 +578,7 @@ again:			remove_next = 1 + (end > next->vm_end);
 		}
 	}
 
+	anon_vma_lock(vma, &mm->mmap_sem);
 	if (root) {
 		flush_dcache_mmap_lock(mapping);
 		vma_prio_tree_remove(vma, root);
@@ -599,6 +600,7 @@ again:			remove_next = 1 + (end > next->vm_end);
 		vma_prio_tree_insert(vma, root);
 		flush_dcache_mmap_unlock(mapping);
 	}
+	anon_vma_unlock(vma);
 
 	if (remove_next) {
 		/*
@@ -1705,12 +1707,12 @@ int expand_upwards(struct vm_area_struct *vma, unsigned long address)
 		return -EFAULT;
 
 	/*
-	 * We must make sure the anon_vma is allocated
-	 * so that the anon_vma locking is not a noop.
+	 * Unlike expand_downwards, we do not need to take the anon_vma lock,
+	 * because we leave vma->vm_start and vma->pgoff untouched. 
+	 * This means rmap lookups of pages inside this VMA stay valid
+	 * throughout the stack expansion.
 	 */
-	if (unlikely(anon_vma_prepare(vma)))
-		return -ENOMEM;
-	anon_vma_lock(vma);
+	spin_lock(&mm->page_table_lock);
 
 	/*
 	 * vma->vm_start/vm_end cannot change under us because the caller
@@ -1721,7 +1723,7 @@ int expand_upwards(struct vm_area_struct *vma, unsigned long address)
 	if (address < PAGE_ALIGN(address+4))
 		address = PAGE_ALIGN(address+4);
 	else {
-		anon_vma_unlock(vma);
+		spin_unlock(&mm->page_table_lock);
 		return -ENOMEM;
 	}
 	error = 0;
@@ -1737,7 +1739,7 @@ int expand_upwards(struct vm_area_struct *vma, unsigned long address)
 		if (!error)
 			vma->vm_end = address;
 	}
-	anon_vma_unlock(vma);
+	spin_unlock(&mm->page_table_lock);
 	return error;
 }
 #endif /* CONFIG_STACK_GROWSUP || CONFIG_IA64 */
@@ -1749,6 +1751,7 @@ static int expand_downwards(struct vm_area_struct *vma,
 				   unsigned long address)
 {
 	int error;
+	struct mm_struct *mm = vma->vm_mm;
 
 	/*
 	 * We must make sure the anon_vma is allocated
@@ -1762,7 +1765,8 @@ static int expand_downwards(struct vm_area_struct *vma,
 	if (error)
 		return error;
 
-	anon_vma_lock(vma);
+	spin_lock(&mm->anon_vma_chain_lock);
+	anon_vma_lock(vma, &mm->anon_vma_chain_lock);
 
 	/*
 	 * vma->vm_start/vm_end cannot change under us because the caller
@@ -1784,6 +1788,8 @@ static int expand_downwards(struct vm_area_struct *vma,
 		}
 	}
 	anon_vma_unlock(vma);
+	spin_unlock(&mm->anon_vma_chain_lock);
+
 	return error;
 }
 

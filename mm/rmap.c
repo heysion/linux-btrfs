@@ -23,6 +23,7 @@
  * inode->i_mutex	(while writing or truncating, not reading or faulting)
  *   inode->i_alloc_sem (vmtruncate_range)
  *   mm->mmap_sem
+ *   mm->anon_vma_chain_lock (mmap_sem for read, protects vma->anon_vma_chain)
  *     page->flags PG_locked (lock_page)
  *       mapping->i_mmap_lock
  *         anon_vma->lock
@@ -134,9 +135,10 @@ int anon_vma_prepare(struct vm_area_struct *vma)
 			allocated = anon_vma;
 		}
 
+		/* anon_vma_chain_lock to protect against threads */
+		spin_lock(&mm->anon_vma_chain_lock);
 		spin_lock(&anon_vma->lock);
-		/* page_table_lock to protect against threads */
-		spin_lock(&mm->page_table_lock);
+
 		if (likely(!vma->anon_vma)) {
 			vma->anon_vma = anon_vma;
 			avc->anon_vma = anon_vma;
@@ -146,8 +148,8 @@ int anon_vma_prepare(struct vm_area_struct *vma)
 			allocated = NULL;
 			avc = NULL;
 		}
-		spin_unlock(&mm->page_table_lock);
 		spin_unlock(&anon_vma->lock);
+		spin_unlock(&mm->anon_vma_chain_lock);
 
 		if (unlikely(allocated))
 			anon_vma_free(allocated);
