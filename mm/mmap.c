@@ -28,6 +28,7 @@
 #include <linux/rmap.h>
 #include <linux/mmu_notifier.h>
 #include <linux/perf_event.h>
+#include <linux/khugepaged.h>
 
 #include <asm/uaccess.h>
 #include <asm/cacheflush.h>
@@ -797,6 +798,7 @@ struct vm_area_struct *vma_merge(struct mm_struct *mm,
 		} else					/* cases 2, 5, 7 */
 			vma_adjust(prev, prev->vm_start,
 				end, prev->vm_pgoff, NULL);
+		khugepaged_enter_vma_merge(prev);
 		return prev;
 	}
 
@@ -813,6 +815,7 @@ struct vm_area_struct *vma_merge(struct mm_struct *mm,
 		else					/* cases 3, 8 */
 			vma_adjust(area, addr, next->vm_end,
 				next->vm_pgoff - pglen, NULL);
+		khugepaged_enter_vma_merge(area);
 		return area;
 	}
 
@@ -1702,6 +1705,7 @@ int expand_upwards(struct vm_area_struct *vma, unsigned long address)
 			vma->vm_end = address;
 	}
 	anon_vma_unlock(vma);
+	khugepaged_enter_vma_merge(vma);
 	return error;
 }
 #endif /* CONFIG_STACK_GROWSUP || CONFIG_IA64 */
@@ -1748,6 +1752,7 @@ static int expand_downwards(struct vm_area_struct *vma,
 		}
 	}
 	anon_vma_unlock(vma);
+	khugepaged_enter_vma_merge(vma);
 	return error;
 }
 
