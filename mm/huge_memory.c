@@ -634,7 +634,7 @@ static int __split_huge_page_splitting(struct page *page,
 		 * We can't temporarily set the pmd to null in order
 		 * to split it, the pmd must remain marked huge at all
 		 * times or the VM won't take the pmd_trans_huge paths
-		 * and it won't wait on the anon_vma->root->lock to
+		 * and it won't wait on the anon_vma->lock to
 		 * serialize against split_huge_page*.
 		 */
 		pmdp_splitting_flush_notify(vma, address, pmd);
@@ -808,19 +808,18 @@ static int __split_huge_page_map(struct page *page,
 	return ret;
 }
 
-/* must be called with anon_vma->root->lock hold */
+/* must be called with anon_vma->lock hold */
 static void __split_huge_page(struct page *page,
 			      struct anon_vma *anon_vma)
 {
 	int mapcount, mapcount2;
-	struct anon_vma_chain *avc;
+	struct vm_area_struct *vma;
 
 	BUG_ON(!PageHead(page));
 	BUG_ON(PageTail(page));
 
 	mapcount = 0;
-	list_for_each_entry(avc, &anon_vma->head, same_anon_vma) {
-		struct vm_area_struct *vma = avc->vma;
+	list_for_each_entry(vma, &anon_vma->head, anon_vma_node) {
 		unsigned long addr = vma_address(page, vma);
 		if (addr == -EFAULT)
 			continue;
@@ -831,8 +830,7 @@ static void __split_huge_page(struct page *page,
 	__split_huge_page_refcount(page);
 
 	mapcount2 = 0;
-	list_for_each_entry(avc, &anon_vma->head, same_anon_vma) {
-		struct vm_area_struct *vma = avc->vma;
+	list_for_each_entry(vma, &anon_vma->head, anon_vma_node) {
 		unsigned long addr = vma_address(page, vma);
 		if (addr == -EFAULT)
 			continue;
@@ -878,6 +876,10 @@ void __split_huge_page_pmd(struct mm_struct *mm, pmd_t *pmd)
 	get_page(page);
 	spin_unlock(&mm->page_table_lock);
 
+	/*
+	 * The vma->anon_vma->lock is the wrong lock if the page is shared,
+	 * the anon_vma->lock pointed by page->mapping is the right one.
+	 */
 	split_huge_page(page);
 
 	put_page(page);
