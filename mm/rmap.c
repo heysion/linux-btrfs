@@ -275,7 +275,7 @@ static void anon_vma_unlink(struct anon_vma_chain *anon_vma_chain)
 	list_del(&anon_vma_chain->same_anon_vma);
 
 	/* We must garbage collect the anon_vma if it's empty */
-	empty = list_empty(&anon_vma->head) && !ksm_refcount(anon_vma);
+	empty = list_empty(&anon_vma->head) && !anonvma_external_refcount(anon_vma);
 	anon_vma_unlock(anon_vma);
 
 	if (empty) {
@@ -302,7 +302,7 @@ static void anon_vma_ctor(void *data)
 	struct anon_vma *anon_vma = data;
 
 	spin_lock_init(&anon_vma->lock);
-	ksm_refcount_init(anon_vma);
+	anonvma_external_refcount_init(anon_vma);
 	INIT_LIST_HEAD(&anon_vma->head);
 }
 
@@ -1395,7 +1395,7 @@ int try_to_munlock(struct page *page)
 		return try_to_unmap_file(page, TTU_MUNLOCK);
 }
 
-#ifdef CONFIG_KSM
+#if defined(CONFIG_KSM) || defined(CONFIG_MIGRATION)
 /*
  * Drop an anon_vma refcount, freeing the anon_vma and anon_vma->root
  * if necessary.  Be careful to do all the tests under the lock.  Once
@@ -1404,7 +1404,7 @@ int try_to_munlock(struct page *page)
  */
 void drop_anon_vma(struct anon_vma *anon_vma)
 {
-	if (atomic_dec_and_lock(&anon_vma->ksm_refcount, &anon_vma->root->lock)) {
+	if (atomic_dec_and_lock(&anon_vma->external_refcount, &anon_vma->root->lock)) {
 		struct anon_vma *root = anon_vma->root;
 		int empty = list_empty(&anon_vma->head);
 		int last_root_user = 0;
@@ -1415,7 +1415,7 @@ void drop_anon_vma(struct anon_vma *anon_vma)
 		 * the refcount on the root and check if we need to free it.
 		 */
 		if (empty && anon_vma != root) {
-			last_root_user = atomic_dec_and_test(&root->ksm_refcount);
+			last_root_user = atomic_dec_and_test(&root->external_refcount);
 			root_empty = list_empty(&root->head);
 		}
 		anon_vma_unlock(anon_vma);
@@ -1444,10 +1444,8 @@ static int rmap_walk_anon(struct page *page, int (*rmap_one)(struct page *,
 	/*
 	 * Note: remove_migration_ptes() cannot use page_lock_anon_vma()
 	 * because that depends on page_mapped(); but not all its usages
-	 * are holding mmap_sem, which also gave the necessary guarantee
-	 * (that this anon_vma's slab has not already been destroyed).
-	 * This needs to be reviewed later: avoiding page_lock_anon_vma()
-	 * is risky, and currently limits the usefulness of rmap_walk().
+	 * are holding mmap_sem. Users without mmap_sem are required to
+	 * take a reference count to prevent the anon_vma disappearing
 	 */
 	anon_vma = page_anon_vma(page);
 	if (!anon_vma)
