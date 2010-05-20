@@ -1589,7 +1589,7 @@ static void collapse_huge_page(struct mm_struct *mm,
 	if (unlikely(mem_cgroup_newpage_charge(new_page, mm, GFP_KERNEL)))
 		goto out;
 
-	anon_vma_lock(vma->anon_vma);
+	spin_lock(&vma->anon_vma->lock);
 
 	pte = pte_offset_map(pmd, address);
 	ptl = pte_lockptr(mm, pmd);
@@ -1614,7 +1614,7 @@ static void collapse_huge_page(struct mm_struct *mm,
 		BUG_ON(!pmd_none(*pmd));
 		set_pmd_at(mm, address, pmd, _pmd);
 		spin_unlock(&mm->page_table_lock);
-		anon_vma_unlock(vma->anon_vma);
+		spin_unlock(&vma->anon_vma->lock);
 		mem_cgroup_uncharge_page(new_page);
 		goto out;
 	}
@@ -1623,7 +1623,7 @@ static void collapse_huge_page(struct mm_struct *mm,
 	 * All pages are isolated and locked so anon_vma rmap
 	 * can't run anymore.
 	 */
-	anon_vma_unlock(vma->anon_vma);
+	spin_unlock(&vma->anon_vma->lock);
 
 	__collapse_huge_page_copy(pte, new_page, vma, address, ptl);
 	__SetPageUptodate(new_page);
