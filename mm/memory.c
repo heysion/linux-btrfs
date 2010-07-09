@@ -2730,6 +2730,7 @@ static int do_swap_page(struct mm_struct *mm, struct vm_area_struct *vma,
 		flags &= ~FAULT_FLAG_WRITE;
 		/* = 2 because the swapcache may be PageAnon already */
 		exclusive = 2;
+		ret |= VM_FAULT_WRITE;
 	}
 	flush_icache_page(vma, page);
 	set_pte_at(mm, address, page_table, pte);
