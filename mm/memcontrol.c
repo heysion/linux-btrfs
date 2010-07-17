@@ -1672,6 +1672,15 @@ static int __mem_cgroup_try_charge(struct mm_struct *mm,
 		if (mem_cgroup_check_room(mem_over_limit, csize))
 			continue;
 
+		/*
+		 * With normal pages we should think about OOM now,
+		 * but huge pages we can just fail, signalling the
+		 * huge page fault handler to fall back to regular
+		 * pages.
+		 */
+		if (csize > PAGE_SIZE)
+			goto nomem;
+
 		/* try to avoid oom while someone is moving charge */
 		if (mc.moving_task && current != mc.moving_task) {
 			struct mem_cgroup *from, *to;
