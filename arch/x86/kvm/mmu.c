@@ -498,10 +498,20 @@ static int has_wrprotected_page(struct kvm *kvm,
 
 static int host_mapping_level(struct kvm *kvm, gfn_t gfn)
 {
-	unsigned long page_size;
+	unsigned long page_size, addr;
 	int i, ret = 0;
 
-	page_size = kvm_host_page_size(kvm, gfn);
+	page_size = kvm_host_page_size(kvm, gfn, &addr);
+
+	/* check for transparent hugepages */
+	if (page_size == PAGE_SIZE && !kvm_is_error_hva(addr)) {
+		pfn_t pfn = hva_to_pfn(kvm, addr);
+
+		if (!is_error_pfn(pfn) && !kvm_is_mmio_pfn(pfn) &&
+		    PageTransCompound(pfn_to_page(pfn)))
+			page_size = KVM_HPAGE_SIZE(2);
+		kvm_release_pfn_clean(pfn);
+	}
 
 	for (i = PT_PAGE_TABLE_LEVEL;
 	     i < (PT_PAGE_TABLE_LEVEL + KVM_NR_PAGE_SIZES); ++i) {
@@ -2134,6 +2144,8 @@ static int nonpaging_map(struct kvm_vcpu *vcpu, gva_t v, int write, gfn_t gfn)
 	pfn_t pfn;
 	unsigned long mmu_seq;
 
+	mmu_seq = vcpu->kvm->mmu_notifier_seq;
+	smp_rmb();
 	level = mapping_level(vcpu, gfn);
 
 	/*
@@ -2145,8 +2157,6 @@ static int nonpaging_map(struct kvm_vcpu *vcpu, gva_t v, int write, gfn_t gfn)
 
 	gfn &= ~(KVM_PAGES_PER_HPAGE(level) - 1);
 
-	mmu_seq = vcpu->kvm->mmu_notifier_seq;
-	smp_rmb();
 	pfn = gfn_to_pfn(vcpu->kvm, gfn);
 
 	/* mmio */
@@ -2363,12 +2373,12 @@ static int tdp_page_fault(struct kvm_vcpu *vcpu, gva_t gpa,
 	if (r)
 		return r;
 
+	mmu_seq = vcpu->kvm->mmu_notifier_seq;
+	smp_rmb();
 	level = mapping_level(vcpu, gfn);
 
 	gfn &= ~(KVM_PAGES_PER_HPAGE(level) - 1);
 
-	mmu_seq = vcpu->kvm->mmu_notifier_seq;
-	smp_rmb();
 	pfn = gfn_to_pfn(vcpu->kvm, gfn);
 	if (is_error_pfn(pfn))
 		return kvm_handle_bad_page(vcpu->kvm, gfn, pfn);
