@@ -1785,7 +1785,7 @@ static struct page *alloc_page_interleave(gfp_t gfp, unsigned order,
 }
 
 /**
- * 	alloc_page_vma	- Allocate a page for a VMA.
+ * 	alloc_pages_vma	- Allocate a page for a VMA.
  *
  * 	@gfp:
  *      %GFP_USER    user allocation.
@@ -1794,6 +1794,7 @@ static struct page *alloc_page_interleave(gfp_t gfp, unsigned order,
  *      %GFP_FS      allocation should not call back into a file system.
  *      %GFP_ATOMIC  don't sleep.
  *
+ *	@order:Order of the GFP allocation.
  * 	@vma:  Pointer to VMA or NULL if not available.
  *	@addr: Virtual Address of the allocation. Must be inside the VMA.
  *
@@ -1807,7 +1808,8 @@ static struct page *alloc_page_interleave(gfp_t gfp, unsigned order,
  *	Should be called with the mm_sem of the vma hold.
  */
 struct page *
-alloc_page_vma(gfp_t gfp, struct vm_area_struct *vma, unsigned long addr)
+alloc_pages_vma(gfp_t gfp, int order, struct vm_area_struct *vma,
+		unsigned long addr)
 {
 	struct mempolicy *pol = get_vma_policy(current, vma, addr);
 	struct zonelist *zl;
@@ -1819,7 +1821,7 @@ alloc_page_vma(gfp_t gfp, struct vm_area_struct *vma, unsigned long addr)
 
 		nid = interleave_nid(pol, vma, addr, PAGE_SHIFT);
 		mpol_cond_put(pol);
-		page = alloc_page_interleave(gfp, 0, nid);
+		page = alloc_page_interleave(gfp, order, nid);
 		put_mems_allowed();
 		return page;
 	}
@@ -1828,7 +1830,7 @@ alloc_page_vma(gfp_t gfp, struct vm_area_struct *vma, unsigned long addr)
 		/*
 		 * slow path: ref counted shared policy
 		 */
-		struct page *page =  __alloc_pages_nodemask(gfp, 0,
+		struct page *page =  __alloc_pages_nodemask(gfp, order,
 						zl, policy_nodemask(gfp, pol));
 		__mpol_put(pol);
 		put_mems_allowed();
@@ -1837,7 +1839,8 @@ alloc_page_vma(gfp_t gfp, struct vm_area_struct *vma, unsigned long addr)
 	/*
 	 * fast path:  default or task policy
 	 */
-	page = __alloc_pages_nodemask(gfp, 0, zl, policy_nodemask(gfp, pol));
+	page = __alloc_pages_nodemask(gfp, order, zl,
+				      policy_nodemask(gfp, pol));
 	put_mems_allowed();
 	return page;
 }
