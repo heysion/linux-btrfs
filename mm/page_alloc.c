@@ -1927,7 +1927,12 @@ gfp_to_alloc_flags(gfp_t gfp_mask)
 	alloc_flags |= (gfp_mask & __GFP_HIGH);
 
 	if (!wait) {
-		alloc_flags |= ALLOC_HARDER;
+		/*
+		 * Not worth trying to allocate harder for
+		 * __GFP_NOMEMALLOC even if it can't schedule.
+		 */
+		if  (!(gfp_mask & __GFP_NOMEMALLOC))
+			alloc_flags |= ALLOC_HARDER;
 		/*
 		 * Ignore cpuset if GFP_ATOMIC (!wait) rather than fail alloc.
 		 * See also cpuset_zone_allowed() comment in kernel/cpuset.c.
