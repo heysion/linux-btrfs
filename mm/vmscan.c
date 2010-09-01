@@ -78,12 +78,6 @@ struct scan_control {
 
 	int order;
 
-	/*
-	 * Intend to reclaim enough contenious memory rather than to reclaim
-	 * enough amount memory. I.e, it's the mode for high order allocation.
-	 */
-	bool lumpy_reclaim_mode;
-
 	/* Which cgroup do we reclaim from */
 	struct mem_cgroup *mem_cgroup;
 
@@ -578,10 +572,6 @@ static enum page_references page_check_references(struct page *page,
 
 	referenced_ptes = page_referenced(page, 1, sc->mem_cgroup, &vm_flags);
 	referenced_page = TestClearPageReferenced(page);
-
-	/* Lumpy reclaim - ignore references */
-	if (sc->lumpy_reclaim_mode)
-		return PAGEREF_RECLAIM;
 
 	/*
 	 * Mlock lost the isolation race with us.  Let try_to_unmap()
@@ -1246,32 +1236,15 @@ static inline bool should_reclaim_stall(unsigned long nr_taken,
 					int priority,
 					struct scan_control *sc)
 {
-	int lumpy_stall_priority;
-
 	/* kswapd should not stall on sync IO */
 	if (current_is_kswapd())
-		return false;
-
-	/* Only stall on lumpy reclaim */
-	if (!sc->lumpy_reclaim_mode)
 		return false;
 
 	/* If we have relaimed everything on the isolated list, no stall */
 	if (nr_freed == nr_taken)
 		return false;
 
-	/*
-	 * For high-order allocations, there are two stall thresholds.
-	 * High-cost allocations stall immediately where as lower
-	 * order allocations such as stacks require the scanning
-	 * priority to be much higher before stalling.
-	 */
-	if (sc->order > PAGE_ALLOC_COSTLY_ORDER)
-		lumpy_stall_priority = DEF_PRIORITY;
-	else
-		lumpy_stall_priority = DEF_PRIORITY / 3;
-
-	return priority <= lumpy_stall_priority;
+	return priority <= DEF_PRIORITY / 3;
 }
 
 /*
@@ -1305,8 +1278,7 @@ shrink_inactive_list(unsigned long nr_to_scan, struct zone *zone,
 	if (scanning_global_lru(sc)) {
 		nr_taken = isolate_pages_global(nr_to_scan,
 			&page_list, &nr_scanned, sc->order,
-			sc->lumpy_reclaim_mode ?
-				ISOLATE_BOTH : ISOLATE_INACTIVE,
+			ISOLATE_INACTIVE,
 			zone, 0, file);
 		zone->pages_scanned += nr_scanned;
 		if (current_is_kswapd())
@@ -1318,8 +1290,7 @@ shrink_inactive_list(unsigned long nr_to_scan, struct zone *zone,
 	} else {
 		nr_taken = mem_cgroup_isolate_pages(nr_to_scan,
 			&page_list, &nr_scanned, sc->order,
-			sc->lumpy_reclaim_mode ?
-				ISOLATE_BOTH : ISOLATE_INACTIVE,
+			ISOLATE_INACTIVE,
 			zone, sc->mem_cgroup,
 			0, file);
 		/*
@@ -1721,21 +1692,6 @@ out:
 	}
 }
 
-static void set_lumpy_reclaim_mode(int priority, struct scan_control *sc)
-{
-	/*
-	 * If we need a large contiguous chunk of memory, or have
-	 * trouble getting a small set of contiguous pages, we
-	 * will reclaim both active and inactive pages.
-	 */
-	if (sc->order > PAGE_ALLOC_COSTLY_ORDER)
-		sc->lumpy_reclaim_mode = 1;
-	else if (sc->order && priority < DEF_PRIORITY - 2)
-		sc->lumpy_reclaim_mode = 1;
-	else
-		sc->lumpy_reclaim_mode = 0;
-}
-
 /*
  * This is a basic per-zone page freer.  Used by both kswapd and direct reclaim.
  */
@@ -1749,8 +1705,6 @@ static void shrink_zone(int priority, struct zone *zone,
 	unsigned long nr_to_reclaim = sc->nr_to_reclaim;
 
 	get_scan_count(zone, sc, nr, priority);
-
-	set_lumpy_reclaim_mode(priority, sc);
 
 	while (nr[LRU_INACTIVE_ANON] || nr[LRU_ACTIVE_FILE] ||
 					nr[LRU_INACTIVE_FILE]) {
