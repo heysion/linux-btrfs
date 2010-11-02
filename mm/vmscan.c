@@ -274,6 +274,7 @@ unsigned long shrink_slab(unsigned long scanned, gfp_t gfp_mask,
 static void set_lumpy_reclaim_mode(int priority, struct scan_control *sc,
 				   bool sync)
 {
+#ifndef CONFIG_COMPACTION
 	enum lumpy_mode mode = sync ? LUMPY_MODE_SYNC : LUMPY_MODE_ASYNC;
 
 	/*
@@ -294,11 +295,14 @@ static void set_lumpy_reclaim_mode(int priority, struct scan_control *sc,
 		sc->lumpy_reclaim_mode = mode;
 	else
 		sc->lumpy_reclaim_mode = LUMPY_MODE_NONE;
+#endif
 }
 
 static void disable_lumpy_reclaim_mode(struct scan_control *sc)
 {
+#ifndef CONFIG_COMPACTION
 	sc->lumpy_reclaim_mode = LUMPY_MODE_NONE;
+#endif
 }
 
 static inline int is_page_cache_freeable(struct page *page)
@@ -321,9 +325,11 @@ static int may_write_to_queue(struct backing_dev_info *bdi,
 	if (bdi == current->backing_dev_info)
 		return 1;
 
+#ifndef CONFIG_COMPACTION
 	/* lumpy reclaim for hugepage often need a lot of write */
 	if (sc->order > PAGE_ALLOC_COSTLY_ORDER)
 		return 1;
+#endif
 	return 0;
 }
 
