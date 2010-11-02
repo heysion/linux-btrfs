@@ -15,6 +15,7 @@
 #include <linux/mm_inline.h>
 #include <linux/kthread.h>
 #include <linux/khugepaged.h>
+#include <linux/freezer.h>
 #include <asm/tlb.h>
 #include <asm/pgalloc.h>
 #include "internal.h"
@@ -2063,6 +2064,9 @@ static void khugepaged_do_scan(struct page **hpage)
 			break;
 #endif
 
+		if (unlikely(kthread_should_stop() || freezing(current)))
+			break;
+
 		spin_lock(&khugepaged_mm_lock);
 		if (!khugepaged_scan.mm_slot)
 			pass_through_head++;
@@ -2125,6 +2129,9 @@ static void khugepaged_loop(void)
 		if (hpage)
 			put_page(hpage);
 #endif
+		try_to_freeze();
+		if (unlikely(kthread_should_stop()))
+			break;
 		if (khugepaged_has_work()) {
 			DEFINE_WAIT(wait);
 			if (!khugepaged_scan_sleep_millisecs)
@@ -2135,8 +2142,8 @@ static void khugepaged_loop(void)
 					khugepaged_scan_sleep_millisecs));
 			remove_wait_queue(&khugepaged_wait, &wait);
 		} else if (khugepaged_enabled())
-			wait_event_interruptible(khugepaged_wait,
-						 khugepaged_wait_event());
+			wait_event_freezable(khugepaged_wait,
+					     khugepaged_wait_event());
 	}
 }
 
@@ -2144,6 +2151,7 @@ static int khugepaged(void *none)
 {
 	struct mm_slot *mm_slot;
 
+	set_freezable();
 	set_user_nice(current, 19);
 
 	/* serialize with start_khugepaged() */
@@ -2157,6 +2165,8 @@ static int khugepaged(void *none)
 
 		mutex_lock(&khugepaged_mutex);
 		if (!khugepaged_enabled())
+			break;
+		if (unlikely(kthread_should_stop()))
 			break;
 	}
 
